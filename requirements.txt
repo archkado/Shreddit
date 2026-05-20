@@ -1,0 +1,11 @@
+edge-tts
+requests
+moviepy==1.0.3
+Pillow
+openai-whisper
+numpy
+colorama
+google-auth
+google-auth-oauthlib
+google-api-python-client
+apscheduler

@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+output/
+client_secrets.json
+youtube_token.pkl
+*.pkl
+*TEMP_MPY_wvf_snd.mp4
+.vscode/
+.claude/
