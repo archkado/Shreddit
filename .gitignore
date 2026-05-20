@@ -1,9 +1,23 @@
-__pycache__/
-*.pyc
-output/
+# credentials & auth tokens — never commit these
 client_secrets.json
 youtube_token.pkl
 *.pkl
-*TEMP_MPY_wvf_snd.mp4
+.env
+
+# generated output
+output/
+
+# media asset folders — too large for git
+videos/
+music/
+
+# python cache
+__pycache__/
+*.pyc
+
+# editor/tool folders
 .vscode/
 .claude/
+
+# moviepy temp files
+*TEMP_MPY_wvf_snd.mp4

@@ -3,6 +3,8 @@ config.py
 ---------
 Single source of truth for all project settings.
 Edit this file to configure the pipeline — no other files need to be touched.
+
+DO NOT commit real API keys — fill these in after cloning.
 """
 
 # ── PATHS ──────────────────────────────────────────────────────────────────────
