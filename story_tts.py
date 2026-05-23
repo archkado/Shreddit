@@ -148,10 +148,15 @@ def fetch_reddit_story(subreddit_name=None):
     sub = subreddit_name or random.choice(DEFAULT_SUBREDDITS)
     print(f"  [~] Fetching from r/{sub}...")
 
-    response = requests.get(
-        f"https://www.reddit.com/r/{sub}/top.json?t=week&limit=50",
-        headers={"User-Agent": "story-bot/1.0"},
-    )
+    try:
+        response = requests.get(
+            f"https://www.reddit.com/r/{sub}/top.json?t=week&limit=50",
+            headers={"User-Agent": "story-bot/1.0"},
+        )
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError(
+            f"No internet connection — could not reach Reddit to fetch r/{sub}."
+        )
     if response.status_code != 200:
         raise ValueError(f"Reddit API returned {response.status_code} for r/{sub}")
 

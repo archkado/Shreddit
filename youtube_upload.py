@@ -33,22 +33,26 @@ except ImportError:
 try:
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
+    from googleapiclient.errors import HttpError
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
+    from google.auth.exceptions import RefreshError
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
+    HttpError = None
+    RefreshError = None
 
-from config import CLIENT_SECRETS_FILE, DISCORD_WEBHOOK_URL, OUTPUT_DIR, TOKEN_FILE
+from config import CLIENT_SECRETS_FILE, DISCORD_WEBHOOK_URL, OUTPUT_DIR, TOKEN_FILE, CHANNELS
 
 SCOPES = ["https://www.googleapis.com/auth/youtube"]
 
 BANNER = f"""{R}{B}
-##  ##  #####  ##  ##  ######  ##  ##  ####   ######     #####  ##  ##  ######   #####  ##   ##  #####  ######  ##   #####  ##  ##
- ####  ##   ## ##  ##    ##    ##  ##  ## ##  ##         ##  ## ##  ##    ##    ##   ## ### ###  ##  ##   ##    ##  ##   ## ### ##
-  ##   ##   ## ##  ##    ##    ##  ##  ####   #####      #####  ##  ##    ##    ##   ## ## # ##  #####    ##    ##  ##   ## ## ###
-  ##   ##   ## ##  ##    ##    ##  ##  ## ##  ##         ##  ## ##  ##    ##    ##   ## ##   ##  ##  ##   ##    ##  ##   ## ##  ##
-  ##    #####   ####     ##     ####   ##  ## ######     ##  ##  ####     ##     #####  ##   ##  ##  ##   ##    ##   #####  ##  ##
+#####   ##  ##  #####   ######  ####    ####    ####  ######
+##      ##  ##  ##  ##  ##      ##  ##  ##  ##   ##     ##
+####    ######  #####   #####   ##  ##  ##  ##   ##     ##
+   ##   ##  ##  ## ##   ##      ##  ##  ##  ##   ##     ##
+#####   ##  ##  ##  ##  ######  ####    ####    ####    ##
 {RS}"""
 
 # ── UI HELPERS ─────────────────────────────────────────────────────────────────
@@ -94,16 +98,28 @@ def _token_has_full_scope(creds):
     return "https://www.googleapis.com/auth/youtube" in granted
 
 
-def get_authenticated_service():
-    """Return an authenticated YouTube API client, refreshing or creating credentials as needed."""
+def get_authenticated_service(channel_cfg=None):
+    """Return an authenticated YouTube API client, refreshing or creating credentials as needed.
+
+    channel_cfg: dict with 'token_file' and 'client_secrets' keys (from CHANNELS in config or
+                 channels.json). Pass None to use TOKEN_FILE / CLIENT_SECRETS_FILE defaults.
+    """
     if not GOOGLE_AVAILABLE:
         status("Google API libraries not installed.", "err")
         status("Run: pip install google-auth google-auth-oauthlib google-api-python-client", "info")
         sys.exit(1)
 
+    token_file   = (channel_cfg or {}).get("token_file",     TOKEN_FILE)
+    secrets_file = (channel_cfg or {}).get("client_secrets", CLIENT_SECRETS_FILE)
+
+    # Ensure the directory that will hold the token exists
+    token_dir = os.path.dirname(token_file)
+    if token_dir:
+        os.makedirs(token_dir, exist_ok=True)
+
     creds = None
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, "rb") as f:
+    if os.path.exists(token_file):
+        with open(token_file, "rb") as f:
             creds = pickle.load(f)
         # Discard token if it was created with the old narrow youtube.upload scope
         if creds and not _token_has_full_scope(creds):
@@ -113,25 +129,34 @@ def get_authenticated_service():
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             status("Refreshing credentials...", "load")
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                if RefreshError and isinstance(e, RefreshError):
+                    status("Credentials are invalid or have been revoked.", "err")
+                    status(f"Delete '{token_file}' and re-run to re-authenticate.", "info")
+                    if os.path.exists(token_file):
+                        os.remove(token_file)
+                    sys.exit(1)
+                raise
         else:
-            if not os.path.exists(CLIENT_SECRETS_FILE):
-                status(f"Missing {CLIENT_SECRETS_FILE}!", "err")
+            if not os.path.exists(secrets_file):
+                status(f"Missing {secrets_file}!", "err")
                 print("\n  To get it:")
                 print("  1. Go to https://console.cloud.google.com")
                 print("  2. Create a project → Enable 'YouTube Data API v3'")
                 print("  3. Credentials → OAuth 2.0 Client ID → Desktop App")
                 print("  4. Download JSON → rename to client_secrets.json → place next to this script")
                 input("\n  Press Enter once done...")
-                if not os.path.exists(CLIENT_SECRETS_FILE):
+                if not os.path.exists(secrets_file):
                     status("Still missing client_secrets.json. Exiting.", "err")
                     sys.exit(1)
 
             status("Opening browser for Google login...", "load")
-            flow  = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
+            flow  = InstalledAppFlow.from_client_secrets_file(secrets_file, SCOPES)
             creds = flow.run_local_server(port=0)
 
-        with open(TOKEN_FILE, "wb") as f:
+        with open(token_file, "wb") as f:
             pickle.dump(creds, f)
         status("Credentials saved.", "ok")
 
@@ -304,6 +329,16 @@ def upload_video(youtube, video_path, metadata):
                     progress_bar(pct)
                     last_pct = pct
         except Exception as e:
+            if HttpError and isinstance(e, HttpError):
+                try:
+                    err_content = json.loads(e.content.decode("utf-8", errors="replace"))
+                    reason = err_content.get("error", {}).get("errors", [{}])[0].get("reason", "")
+                except Exception:
+                    reason = ""
+                if reason == "quotaExceeded":
+                    status("YouTube API daily quota exceeded.", "err")
+                    status("Uploads reset at midnight Pacific Time. Try again tomorrow.", "info")
+                    sys.exit(1)
             status(f"Upload error: {e}", "err")
             sys.exit(1)
 
@@ -356,7 +391,11 @@ def upload_video(youtube, video_path, metadata):
 
     # Append to the upload log so you have a record of everything that's been published
     log_path = os.path.join(OUTPUT_DIR, "upload_log.json")
-    log      = json.load(open(log_path)) if os.path.exists(log_path) else []
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as f:
+            log = json.load(f)
+    else:
+        log = []
     log.append({
         "video_id":    video_id,
         "title":       title,
@@ -364,7 +403,7 @@ def upload_video(youtube, video_path, metadata):
         "uploaded_at": datetime.datetime.now().isoformat(),
         "file":        os.path.basename(video_path),
     })
-    with open(log_path, "w") as f:
+    with open(log_path, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
     status(f"Logged to {log_path}", "info")
 
@@ -413,7 +452,7 @@ def main():
         clear()
         print(BANNER)
         print(f"{C}{'=' * 100}{RS}")
-        print(f"{W}{B}  YouTube Automation Bot{RS}  {DIM}| Made for the grind{RS}")
+        print(f"{W}{B}  Shreddit{RS}  {DIM}| Reddit -> YouTube Shorts Pipeline{RS}")
         print(f"{C}{'=' * 100}{RS}\n")
         input(f"  Press Enter to start... ")
 

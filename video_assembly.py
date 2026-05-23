@@ -369,7 +369,7 @@ def run_assembly(audio_path, meta_path, bg_path=None):
         )
         final_audio = CompositeAudioClip([audio.set_start(HOOK_DURATION), music])
     else:
-        print("  [*] No music tracks found — skipping background music")
+        print("  [*] No music tracks found - skipping background music")
         final_audio = CompositeAudioClip([audio.set_start(HOOK_DURATION)])
 
     print("  [~] Compositing final video...")
@@ -379,7 +379,7 @@ def run_assembly(audio_path, meta_path, bg_path=None):
     out_name = f"video_{os.path.splitext(os.path.basename(audio_path))[0]}.mp4"
     out_path = os.path.join(OUTPUT_DIR, out_name)
 
-    print(f"  [~] Exporting → {out_path}")
+    print(f"  [~] Exporting -> {out_path}")
     final.write_videofile(
         out_path,
         fps=VIDEO_FPS,
@@ -434,7 +434,7 @@ def main():
         )
         final_audio = CompositeAudioClip([audio.set_start(HOOK_DURATION), music])
     else:
-        print("  [*] No music tracks found — skipping background music")
+        print("  [*] No music tracks found - skipping background music")
         final_audio = CompositeAudioClip([audio.set_start(HOOK_DURATION)])
 
     print("  [~] Compositing final video...")
@@ -444,7 +444,7 @@ def main():
     out_name = args.out or f"video_{os.path.splitext(os.path.basename(args.audio))[0]}.mp4"
     out_path = os.path.join(OUTPUT_DIR, out_name)
 
-    print(f"  [~] Exporting → {out_path}")
+    print(f"  [~] Exporting -> {out_path}")
     final.write_videofile(
         out_path,
         fps=VIDEO_FPS,

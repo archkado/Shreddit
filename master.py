@@ -29,14 +29,14 @@ try:
 except ImportError:
     R = G = Y = C = W = M = DIM = B = RS = ""
 
-from config import DEFAULT_SUBREDDITS, OUTPUT_DIR, SUBREDDIT_CATEGORIES
+from config import CLIENT_SECRETS_FILE, DEFAULT_SUBREDDITS, OUTPUT_DIR, SUBREDDIT_CATEGORIES
 
 BANNER = f"""{R}{B}
-##   ##  #####   #####  ######  ######  #####         #####   #####  ######
-###  ##  ##  ##  ##       ##    ##      ##  ##         ##  ##  ##  ##   ##
-## # ##  #####   #####    ##    #####   #####          #####   ##  ##   ##
-##  ###  ##  ##      ##   ##    ##      ##  ##         ##  ##  ##  ##   ##
-##   ##  ##  ##  #####    ##    ######  ##  ##         #####   #####    ##
+#####   ##  ##  #####   ######  ####    ####    ####  ######
+##      ##  ##  ##  ##  ##      ##  ##  ##  ##   ##     ##
+####    ######  #####   #####   ##  ##  ##  ##   ##     ##
+   ##   ##  ##  ## ##   ##      ##  ##  ##  ##   ##     ##
+#####   ##  ##  ##  ##  ######  ####    ####    ####    ##
 {RS}"""
 
 # ── UI HELPERS ─────────────────────────────────────────────────────────────────
@@ -183,7 +183,10 @@ def mode_full_automation():
 
         if input(f"\n  {Y}>{RS} Upload to YouTube now? (y/n): ").strip().lower() == "y":
             divider("UPLOADING")
-            yt = youtube_upload.get_authenticated_service()
+            channel_name, channel_cfg = pick_channel()
+            if channel_name:
+                status(f"Uploading to: {channel_name}", "info")
+            yt = youtube_upload.get_authenticated_service(channel_cfg)
             metadata = youtube_upload.get_metadata(video_path, meta_path=meta_path)
             youtube_upload.upload_video(yt, video_path, metadata)
         else:
@@ -211,7 +214,10 @@ def mode_uploader_only():
 
     divider("VIDEO UPLOADER")
 
-    yt = youtube_upload.get_authenticated_service()
+    channel_name, channel_cfg = pick_channel()
+    if channel_name:
+        status(f"Channel: {channel_name}", "info")
+    yt = youtube_upload.get_authenticated_service(channel_cfg)
     status("Connected to YouTube!", "ok")
 
     while True:
@@ -243,6 +249,8 @@ def mode_uploader_only():
 
 CONFIG_PATH         = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
 SCHEDULED_JOBS_FILE = os.path.join(OUTPUT_DIR, "scheduled_jobs.json")
+CHANNELS_FILE       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "channels.json")
+TOKENS_DIR          = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tokens")
 
 
 def _load_jobs():
@@ -256,6 +264,64 @@ def _save_jobs(jobs):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(SCHEDULED_JOBS_FILE, "w", encoding="utf-8") as f:
         json.dump(jobs, f, indent=2)
+
+
+# ── CHANNEL HELPERS ────────────────────────────────────────────────────────────
+
+def _load_channels():
+    """Return {name: cfg_dict} from channels.json, or {} if no channels saved yet."""
+    if not os.path.exists(CHANNELS_FILE):
+        return {}
+    with open(CHANNELS_FILE, encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get("channels", {})
+
+
+def _load_channels_default():
+    """Return the default channel nickname, or ''."""
+    if not os.path.exists(CHANNELS_FILE):
+        return ""
+    with open(CHANNELS_FILE, encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get("default", "")
+
+
+def _save_channels(channels, default=""):
+    with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"channels": channels, "default": default}, f, indent=2)
+
+
+def _channel_slug(name):
+    """Convert a channel nickname to a safe token filename slug."""
+    slug = re.sub(r"[^\w\s-]", "", name.lower())
+    slug = re.sub(r"[\s-]+", "_", slug).strip("_")
+    return slug or "channel"
+
+
+def pick_channel():
+    """Return (channel_name, channel_cfg) for the selected upload target.
+
+    Auto-picks when only one channel is saved. Shows a numbered picker for
+    multiple channels. Returns (None, None) when no channels are configured
+    (falls back to the legacy single-account TOKEN_FILE flow).
+    """
+    channels = _load_channels()
+    default  = _load_channels_default()
+
+    if not channels:
+        return None, None
+
+    if len(channels) == 1:
+        name = next(iter(channels))
+        status(f"Channel: {name}", "info")
+        return name, channels[name]
+
+    names   = list(channels.keys())
+    choices = [n + (" [default]" if n == default else "") for n in names]
+    idx, _  = prompt_choice("Upload to which channel?", choices)
+    name    = names[idx]
+    return name, channels[name]
+
 
 _EDGE_TTS_VOICES = [
     ("en-US-ChristopherNeural", "Christopher  — US Male"),
@@ -587,6 +653,149 @@ def settings_view_all():
     input(f"  {Y}>{RS} Press Enter to return... ")
 
 
+# ── SETTINGS: MANAGE CHANNELS ─────────────────────────────────────────────────
+
+def _channels_add():
+    import youtube_upload
+    divider("ADD CHANNEL")
+
+    channels = _load_channels()
+    default  = _load_channels_default()
+
+    name = input(f"  {Y}>{RS} Channel nickname (e.g. 'Drama Channel'): ").strip()
+    if not name:
+        status("No nickname entered — cancelled.", "warn")
+        return
+    if name in channels:
+        status(f"A channel named '{name}' already exists.", "err")
+        return
+
+    slug        = _channel_slug(name)
+    token_file  = os.path.join("tokens", f"{slug}_token.pkl")
+    channel_cfg = {"token_file": token_file, "client_secrets": CLIENT_SECRETS_FILE}
+
+    os.makedirs(TOKENS_DIR, exist_ok=True)
+    status(f"Opening browser for Google login — sign in as the '{name}' account...", "load")
+    try:
+        youtube_upload.get_authenticated_service(channel_cfg)
+        channels[name] = channel_cfg
+        if not default:
+            default = name   # first channel becomes the default automatically
+        _save_channels(channels, default)
+        status(f"Channel '{name}' authenticated and saved.", "ok")
+        status(f"Token stored at: {token_file}", "info")
+    except Exception as exc:
+        status(f"Authentication failed: {exc}", "err")
+
+
+def _channels_remove():
+    divider("REMOVE CHANNEL")
+    channels = _load_channels()
+    default  = _load_channels_default()
+
+    if not channels:
+        status("No channels configured yet.", "warn")
+        input(f"\n  {Y}>{RS} Press Enter to go back... ")
+        return
+
+    names  = list(channels.keys())
+    idx, _ = prompt_choice("Which channel to remove?", names + ["Cancel"])
+
+    if idx == len(names):
+        status("No change.", "info")
+        return
+
+    name       = names[idx]
+    token_file = channels[name].get("token_file", "")
+
+    confirm = input(f"  {Y}>{RS} Remove '{name}' and delete its token file? (y/n): ").strip().lower()
+    if confirm != "y":
+        status("No change.", "info")
+        return
+
+    del channels[name]
+    if default == name:
+        default = next(iter(channels), "")
+    _save_channels(channels, default)
+
+    if token_file and os.path.exists(token_file):
+        try:
+            os.remove(token_file)
+            status(f"Deleted token: {token_file}", "ok")
+        except Exception as exc:
+            status(f"Could not delete token file: {exc}", "warn")
+
+    status(f"Channel '{name}' removed.", "ok")
+
+
+def _channels_list():
+    divider("SAVED CHANNELS")
+    channels = _load_channels()
+    default  = _load_channels_default()
+
+    if not channels:
+        print(f"  {DIM}No channels configured yet.")
+        print(f"  Use 'Add a channel' to get started.{RS}\n")
+    else:
+        for name, cfg in channels.items():
+            token_ok = os.path.exists(cfg.get("token_file", ""))
+            tag      = f" {G}[default]{RS}" if name == default else ""
+            auth     = f" {G}authenticated{RS}" if token_ok else f" {R}token missing{RS}"
+            print(f"  {C}{name}{RS}{tag}{auth}")
+            print(f"    {DIM}token: {cfg.get('token_file', '?')}{RS}")
+        print()
+
+    input(f"  {Y}>{RS} Press Enter to go back... ")
+
+
+def _channels_set_default():
+    divider("SET DEFAULT CHANNEL")
+    channels = _load_channels()
+    default  = _load_channels_default()
+
+    if not channels:
+        status("No channels configured yet.", "warn")
+        input(f"\n  {Y}>{RS} Press Enter to go back... ")
+        return
+
+    names   = list(channels.keys())
+    choices = [n + (" [current default]" if n == default else "") for n in names]
+    idx, _  = prompt_choice("Set as default:", choices + ["Cancel"])
+
+    if idx == len(names):
+        status("No change.", "info")
+        return
+
+    new_default = names[idx]
+    _save_channels(channels, new_default)
+    status(f"Default channel set to: {new_default}", "ok")
+
+
+def settings_manage_channels():
+    _sub = [
+        ("Add a channel",       _channels_add),
+        ("Remove a channel",    _channels_remove),
+        ("List all channels",   _channels_list),
+        ("Set default channel", _channels_set_default),
+    ]
+    while True:
+        channels = _load_channels()
+        default  = _load_channels_default()
+        divider("MANAGE CHANNELS")
+        if not channels:
+            print(f"  {DIM}No channels configured yet. Use 'Add a channel' to get started.{RS}\n")
+        else:
+            print(f"  {DIM}{len(channels)} channel(s) saved. Default: {default or 'none set'}{RS}\n")
+
+        menu_labels = [label for label, _ in _sub] + ["Back to Settings"]
+        idx, _      = prompt_choice("Channel management:", menu_labels)
+
+        if idx < len(_sub):
+            _sub[idx][1]()
+        else:
+            break
+
+
 # ── SETTINGS: SCHEDULER SUB-MENU ──────────────────────────────────────────────
 
 def settings_scheduler_upload_time():
@@ -743,6 +952,7 @@ def mode_settings():
         ("Discord Webhooks",                 settings_discord),
         ("Test Discord Webhooks",            settings_test_discord),
         ("Run Stats Report Now",             settings_run_stats),
+        ("Manage Channels",                  settings_manage_channels),
         ("Scheduler Settings",               settings_scheduler),
         ("View All Settings",                settings_view_all),
     ]
@@ -849,6 +1059,9 @@ def mode_auto_scheduler():
     if selected_cat_id != default_cat_id:
         _set("DEFAULT_YT_CATEGORY", selected_cat_id)
 
+    # ── Channel selection ─────────────────────────────────────────────────────
+    channel_name, channel_cfg = pick_channel()
+
     # Build timezone-aware datetimes from local input
     interval = getattr(cfg, "UPLOAD_INTERVAL_DAYS", 1)
     schedule_dts = [
@@ -866,6 +1079,8 @@ def mode_auto_scheduler():
     # ── Confirmation ──────────────────────────────────────────────────────────
     divider("CONFIRM SCHEDULE")
     print(f"  {W}Videos  :{RS} {num_videos}")
+    if channel_name:
+        print(f"  {W}Channel :{RS} {channel_name}")
     print(f"  {W}Category:{RS} {selected_cat_label} ({selected_cat_id})")
     print(f"  {W}First   :{RS} {schedule_dts[0].strftime('%Y-%m-%d %H:%M')}")
     if num_videos > 1:
@@ -914,7 +1129,9 @@ def mode_auto_scheduler():
 
     # Authenticate interactively before going into background mode
     status("Authenticating with YouTube (may open a browser)...", "load")
-    yt = youtube_upload.get_authenticated_service()
+    if channel_name:
+        status(f"Channel: {channel_name}", "info")
+    yt = youtube_upload.get_authenticated_service(channel_cfg)
     status("YouTube authenticated.", "ok")
 
     # ── Define upload jobs ────────────────────────────────────────────────────
@@ -970,7 +1187,7 @@ def mode_auto_scheduler():
 
     # ── Monitor loop ──────────────────────────────────────────────────────────
     divider("SCHEDULER RUNNING")
-    print(f"  {G}✓ {len(pairs)} video(s) queued:{RS}\n")
+    print(f"  {G}[OK] {len(pairs)} video(s) queued:{RS}\n")
     for slot, (dt, (vp, _)) in enumerate(pairs, start=1):
         print(f"    {C}{slot}.{RS} {os.path.basename(vp):<52} {dt.strftime('%Y-%m-%d %H:%M')}")
     print(f"\n  {DIM}Keep this window open. Minimise it and let it run.")
@@ -1049,7 +1266,7 @@ def main():
         return
 
     print_banner()
-    print(f"  {W}Welcome to Nester Bot.{RS}\n")
+    print(f"  {W}Welcome to Shreddit.{RS}\n")
 
     idx, _ = prompt_choice("What do you want to do?", [
         "Full Automation  — generate story → build video → upload to YouTube",

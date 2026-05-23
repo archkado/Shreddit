@@ -1,6 +1,6 @@
-# Reddit Story YouTube Automation
+# Shreddit
 
-Automatically turns Reddit posts into vertical short-form videos and uploads them to YouTube.
+Shreddit — Fully automated Reddit-to-YouTube Shorts pipeline. Fetches viral Reddit stories, converts them to speech, renders vertical videos with captions and background gameplay footage, and uploads directly to YouTube. Built in Python with a terminal UI, batch scheduling, multi-channel support, and Discord notifications.
 
 **Pipeline:** Reddit post → TTS audio → 1080×1920 MP4 (background gameplay + captions + Reddit card) → YouTube upload
 
@@ -56,9 +56,11 @@ Open **`config.py`** — it's the only file you need to edit. All settings are d
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
 2. Create a project → Enable **YouTube Data API v3**
-3. Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID** → Desktop App
-4. Download the JSON file → rename it `client_secrets.json` → place it in this folder
-5. On first upload a browser window will open for you to log in — your token is cached after that in `youtube_token.pkl`
+3. Go to **OAuth consent screen** → set User Type to **External** → fill in the required fields (app name, your email) → Save
+4. Under **Test users** → click **Add users** → add your Google account email (required while the app is in Testing mode)
+5. Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID** → Desktop App
+6. Download the JSON file → rename it `client_secrets.json` → place it in this folder
+7. On first upload a browser window will open for you to log in — your token is cached after that in `youtube_token.pkl`
 
 ---
 

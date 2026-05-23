@@ -4,6 +4,9 @@ youtube_token.pkl
 *.pkl
 .env
 
+# per-channel OAuth tokens
+tokens/
+
 # generated output
 output/
 

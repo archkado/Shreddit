@@ -115,7 +115,7 @@ def send_to_discord(fields, total):
             print(f"  [!] Discord returned {resp.status_code}: {resp.text}")
             return
 
-    print(f"  [OK] Stats report sent — {total} video{'s' if total != 1 else ''}")
+    print(f"  [OK] Stats report sent - {total} video{'s' if total != 1 else ''}")
 
 
 # ── ENTRY POINT ────────────────────────────────────────────────────────────────

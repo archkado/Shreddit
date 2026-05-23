@@ -150,6 +150,22 @@ SUBREDDIT_CATEGORIES = {
 # Flat list used by story_tts.py for random auto-selection
 DEFAULT_SUBREDDITS = [s for subs in SUBREDDIT_CATEGORIES.values() for s in subs]
 
+# ── CHANNELS ───────────────────────────────────────────────────────────────────
+# Managed via Settings > Manage Channels. Live data is stored in channels.json.
+# This block shows the expected format. Add real channels through the menu.
+
+CHANNELS = {
+    "Drama Channel": {
+        "token_file":     "tokens/drama_channel_token.pkl",
+        "client_secrets": "client_secrets.json",
+    },
+    "Creepy Channel": {
+        "token_file":     "tokens/creepy_channel_token.pkl",
+        "client_secrets": "client_secrets.json",
+    },
+}
+DEFAULT_CHANNEL = ""   # set via Settings > Manage Channels > Set Default
+
 # ── AUTO SCHEDULER ─────────────────────────────────────────────────────────────
 
 DEFAULT_UPLOAD_TIME  = "14:00"   # default upload time pre-filled in the Auto Scheduler (HH:MM)
