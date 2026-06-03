@@ -33,8 +33,31 @@ from config import (
     MIN_UPVOTES,
     MIN_WORDS,
     OUTPUT_DIR,
+    REDDIT_CLIENT_ID,
+    REDDIT_CLIENT_SECRET,
+    REDDIT_PASSWORD,
+    REDDIT_USERNAME,
     TTS_RATE,
 )
+
+_reddit_token_cache = {"token": None}
+
+def _get_reddit_token():
+    if _reddit_token_cache["token"]:
+        return _reddit_token_cache["token"]
+    if not (REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET):
+        return None
+    resp = requests.post(
+        "https://www.reddit.com/api/v1/access_token",
+        auth=(REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET),
+        data={"grant_type": "password", "username": REDDIT_USERNAME, "password": REDDIT_PASSWORD},
+        headers={"User-Agent": f"shreddit-bot/2.0 by {REDDIT_USERNAME}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("access_token")
+    _reddit_token_cache["token"] = token
+    return token
 
 # ── TEXT UTILITIES ─────────────────────────────────────────────────────────────
 
@@ -148,15 +171,26 @@ def fetch_reddit_story(subreddit_name=None):
     sub = subreddit_name or random.choice(DEFAULT_SUBREDDITS)
     print(f"  [~] Fetching from r/{sub}...")
 
+    token = _get_reddit_token()
+    if token:
+        url = f"https://oauth.reddit.com/r/{sub}/top.json?t=week&limit=50"
+        headers = {
+            "User-Agent": f"shreddit-bot/2.0 by {REDDIT_USERNAME}",
+            "Authorization": f"bearer {token}",
+        }
+    else:
+        url = f"https://www.reddit.com/r/{sub}/top.json?t=week&limit=50"
+        headers = {"User-Agent": "story-bot/1.0"}
+
     try:
-        response = requests.get(
-            f"https://www.reddit.com/r/{sub}/top.json?t=week&limit=50",
-            headers={"User-Agent": "story-bot/1.0"},
-        )
+        response = requests.get(url, headers=headers, timeout=15)
     except requests.exceptions.ConnectionError:
         raise ConnectionError(
             f"No internet connection — could not reach Reddit to fetch r/{sub}."
         )
+    if response.status_code == 401:
+        _reddit_token_cache["token"] = None
+        raise ValueError(f"Reddit OAuth token expired or invalid — check your credentials in config.py")
     if response.status_code != 200:
         raise ValueError(f"Reddit API returned {response.status_code} for r/{sub}")
 

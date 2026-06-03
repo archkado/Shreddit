@@ -18,9 +18,17 @@ MUSIC_DIR    = "./music"    # put background music MP3s here (optional)
 
 ANTHROPIC_API_KEY   = ""                        # enables AI story generation + auto-extension
 ELEVENLABS_API_KEY  = ""                        # enables premium TTS; blank = free edge-tts
+
+# ── REDDIT OAuth ───────────────────────────────────────────────────────────────
+# Required to fetch posts (Reddit blocked unauthenticated JSON access in 2023).
+# Create a free "script" app at https://www.reddit.com/prefs/apps and paste below.
+REDDIT_CLIENT_ID     = ""   # the short string under your app name
+REDDIT_CLIENT_SECRET = ""   # the "secret" field
+REDDIT_USERNAME      = ""   # your Reddit account username
+REDDIT_PASSWORD      = ""   # your Reddit account password
 ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"   # default ElevenLabs voice (Rachel)
-DISCORD_WEBHOOK_URL  = ""   # post-upload notification; blank = disabled
-STATS_CHANNEL_WEBHOOK = ""  # daily stats report destination; can be the same URL as above
+DISCORD_WEBHOOK_URL  = "https://discord.com/api/webhooks/1511637712061599895/C_p9PLQOum5EB7dgzXTLJHWRbowL2Yr3IhMhOCaV-yBb9FC01gUCJEBxT_i6EPPjoZr1"   # post-upload notification; blank = disabled
+STATS_CHANNEL_WEBHOOK = "https://discord.com/api/webhooks/1511637712061599895/C_p9PLQOum5EB7dgzXTLJHWRbowL2Yr3IhMhOCaV-yBb9FC01gUCJEBxT_i6EPPjoZr1"   # daily stats report destination; can be the same URL as above
 
 # ── YOUTUBE AUTH ───────────────────────────────────────────────────────────────
 
@@ -30,7 +38,7 @@ TOKEN_FILE          = "youtube_token.pkl"     # cached auth token — auto-creat
 # ── TEXT-TO-SPEECH ─────────────────────────────────────────────────────────────
 
 EDGE_TTS_VOICE  = "en-US-ChristopherNeural"   # free Microsoft voice used when no ElevenLabs key
-TTS_RATE        = "+1%"   # speech speed: +10% faster, -10% slower, +0% default
+TTS_RATE        = "+10%"   # speech speed: +10% faster, -10% slower, +0% default
 ANTHROPIC_MODEL = "claude-sonnet-4-6"         # Claude model used for story generation/extension
 
 # ── STORY LENGTH ───────────────────────────────────────────────────────────────
@@ -171,4 +179,4 @@ DEFAULT_CHANNEL = ""   # set via Settings > Manage Channels > Set Default
 DEFAULT_UPLOAD_TIME  = "14:00"   # default upload time pre-filled in the Auto Scheduler (HH:MM)
 DEFAULT_BATCH_SIZE   = 1         # default number of videos generated per batch run
 UPLOAD_INTERVAL_DAYS = 1         # days between each scheduled video upload
-DEFAULT_YT_CATEGORY  = "24"      # YouTube category ID applied to every scheduled upload
+DEFAULT_YT_CATEGORY  = "24"   # YouTube category ID applied to every scheduled upload
